@@ -17,6 +17,10 @@ pub struct BackupRequest {
     pub output_dir: String,
     pub backup_apk: bool,
     pub backup_data: bool,
+    pub backup_obb: bool,
+    pub backup_media: bool,
+    pub backup_user: bool,
+    pub backup_user_de: bool,
 }
 
 pub fn create_backup(
@@ -95,17 +99,84 @@ pub fn create_backup(
             }
         }
 
+        let mut data_pull_targets = Vec::new();
+
         if request.backup_data {
+            data_pull_targets.push((
+                format!("/data/data/{}", package),
+                "data.tar.gz",
+                "Backing up App Data...",
+                true // needs root
+            ));
+        }
+        if request.backup_user {
+             data_pull_targets.push((
+                format!("/data/user/0/{}", package),
+                "user.tar.gz",
+                "Backing up User Data...",
+                true
+            ));
+        }
+        if request.backup_user_de {
+            data_pull_targets.push((
+                format!("/data/user_de/0/{}", package),
+                "user_de.tar.gz",
+                "Backing up User DE Data...",
+                true
+            ));
+        }
+        if request.backup_obb {
+             data_pull_targets.push((
+                format!("/sdcard/Android/obb/{}", package),
+                "obb.tar.gz",
+                "Backing up OBB...",
+                false
+            ));
+        }
+        if request.backup_media {
+             data_pull_targets.push((
+                format!("/sdcard/Android/media/{}", package),
+                "media.tar.gz",
+                "Backing up Media...",
+                false
+            ));
+        }
+
+        let total_targets = data_pull_targets.len();
+        for (i, (source_path, dest_filename, status_msg, needs_root)) in data_pull_targets.into_iter().enumerate() {
+            let percentage = 20 + ((i as f32 / total_targets as f32) * 70.0) as u8;
             progress_callback(BackupProgress {
                 package_name: package.clone(),
-                status: "Backing up App Data...".to_string(),
-                percentage: 60,
+                status: status_msg.to_string(),
+                percentage,
             });
 
-            // Note: Backing up data requires root or Android's built-in backup.
-            // A production app would use `exec-out tar` here, combined with compression + encryption streams.
-            // For this V1, we simulate pulling the data directory to avoid hangs.
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            let dest_file = app_dir.join(dest_filename);
+            let dest_file_str = dest_file.to_str().unwrap();
+
+            if needs_root {
+                let tar_cmd = format!("tar -czf - -C {} . 2>/dev/null", source_path);
+                let _ = execute_adb(&[
+                    "-s",
+                    &request.device_id,
+                    "exec-out",
+                    "su",
+                    "-c",
+                    &tar_cmd,
+                    ">",
+                    dest_file_str
+                ]);
+            } else {
+                let tar_cmd = format!("tar -czf - -C {} . 2>/dev/null", source_path);
+                let _ = execute_adb(&[
+                    "-s",
+                    &request.device_id,
+                    "exec-out",
+                    &tar_cmd,
+                    ">",
+                    dest_file_str
+                ]);
+            }
         }
 
         progress_callback(BackupProgress {

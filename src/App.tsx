@@ -36,6 +36,21 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState<BackupProgress | null>(null);
 
+  const [backupApk, setBackupApk] = useState(true);
+  const [backupData, setBackupData] = useState(false);
+  const [backupObb, setBackupObb] = useState(false);
+  const [backupMedia, setBackupMedia] = useState(false);
+  const [backupUser, setBackupUser] = useState(false);
+  const [backupUserDe, setBackupUserDe] = useState(false);
+
+  useEffect(() => {
+    if (hasRoot) {
+      setBackupData(true);
+      setBackupUser(true);
+      setBackupUserDe(true);
+    }
+  }, [hasRoot]);
+
   const refreshDevices = async () => {
     try {
       const devList = await invoke<Device[]>("get_devices");
@@ -111,8 +126,12 @@ function App() {
           device_id: selectedDevice,
           apps: Array.from(selectedApps),
           output_dir: outputDir,
-          backup_apk: true,
-          backup_data: hasRoot
+          backup_apk: backupApk,
+          backup_data: backupData,
+          backup_obb: backupObb,
+          backup_media: backupMedia,
+          backup_user: backupUser,
+          backup_user_de: backupUserDe
         }
       });
       setTimeout(() => setIsProcessing(false), 1000);
@@ -229,19 +248,29 @@ function App() {
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Folder className="w-5 h-5 text-gray-500" />
-                <input
-                  type="text"
-                  value={outputDir}
-                  onChange={(e) => setOutputDir(e.target.value)}
-                  className="w-64 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 dark:bg-gray-700"
-                />
+            <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 flex flex-col gap-4">
+              <div className="flex items-center gap-4 text-sm flex-wrap">
+                <span className="font-semibold mr-2">Include:</span>
+                <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={backupApk} onChange={e => setBackupApk(e.target.checked)} className="rounded" /> APK</label>
+                <label className="flex items-center gap-1 cursor-pointer" title="Requires Root"><input type="checkbox" checked={backupData} onChange={e => setBackupData(e.target.checked)} disabled={!hasRoot} className="rounded" /> App Data</label>
+                <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={backupObb} onChange={e => setBackupObb(e.target.checked)} className="rounded" /> OBB</label>
+                <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={backupMedia} onChange={e => setBackupMedia(e.target.checked)} className="rounded" /> Media</label>
+                <label className="flex items-center gap-1 cursor-pointer" title="Requires Root"><input type="checkbox" checked={backupUser} onChange={e => setBackupUser(e.target.checked)} disabled={!hasRoot} className="rounded" /> User Data</label>
+                <label className="flex items-center gap-1 cursor-pointer" title="Requires Root"><input type="checkbox" checked={backupUserDe} onChange={e => setBackupUserDe(e.target.checked)} disabled={!hasRoot} className="rounded" /> User DE</label>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => startOperation("restore")}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Folder className="w-5 h-5 text-gray-500" />
+                  <input
+                    type="text"
+                    value={outputDir}
+                    onChange={(e) => setOutputDir(e.target.value)}
+                    className="w-64 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 dark:bg-gray-700"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => startOperation("restore")}
                   disabled={selectedApps.size === 0 || isProcessing}
                   className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
                 >
@@ -256,6 +285,7 @@ function App() {
                   <HardDrive className="w-4 h-4" />
                   Backup Selected
                 </button>
+                </div>
               </div>
             </div>
 
