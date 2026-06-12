@@ -1,6 +1,7 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::fs::File;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdbDevice {
@@ -25,6 +26,36 @@ pub fn execute_adb(args: &[&str]) -> Result<String, String> {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+pub fn execute_adb_to_file(args: &[&str], output_path: &Path) -> Result<(), String> {
+    let file = File::create(output_path).map_err(|e| format!("Failed to create output file: {}", e))?;
+    let status = Command::new(get_adb_path())
+        .args(args)
+        .stdout(Stdio::from(file))
+        .stderr(Stdio::piped())
+        .status()
+        .map_err(|e| format!("Failed to execute ADB: {}", e))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err("ADB command failed".to_string())
+    }
+}
+
+pub fn check_dir_exists(device_id: &str, path: &str, needs_root: bool) -> bool {
+    let cmd = format!("test -d \"{}\" && echo exists", path);
+    let output = if needs_root {
+        execute_adb(&["-s", device_id, "shell", "su", "-c", &cmd])
+    } else {
+        execute_adb(&["-s", device_id, "shell", &cmd])
+    };
+
+    match output {
+        Ok(res) => res.trim() == "exists",
+        Err(_) => false,
     }
 }
 
