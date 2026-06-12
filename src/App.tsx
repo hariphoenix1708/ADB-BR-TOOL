@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { HardDrive, Smartphone, RefreshCw, CheckCircle, XCircle, Folder, Download } from "lucide-react";
-import "./App.css";
+
 
 interface Device {
   id: string;
@@ -81,9 +81,6 @@ function App() {
   useEffect(() => {
     const unlisten = listen<BackupProgress>("backup-progress", (event) => {
       setProgress(event.payload);
-      if (event.payload.percentage === 100) {
-        setTimeout(() => setIsProcessing(false), 1000);
-      }
     });
 
     return () => {
@@ -118,6 +115,7 @@ function App() {
           backup_data: hasRoot
         }
       });
+      setTimeout(() => setIsProcessing(false), 1000);
     } catch (e) {
       console.error(`${operation} failed`, e);
       setIsProcessing(false);

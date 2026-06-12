@@ -77,13 +77,21 @@ pub fn create_backup(
                     .to_string();
                 let dest_path = app_dir.join(&file_name);
 
-                execute_adb(&[
+                if let Err(e) = execute_adb(&[
                     "-s",
                     &request.device_id,
                     "pull",
                     &path,
                     dest_path.to_str().unwrap(),
-                ])?;
+                ]) {
+                    progress_callback(BackupProgress {
+                        package_name: package.clone(),
+                        status: format!("Error pulling APK: {}", e),
+                        percentage: 20, // keep at 20 but show error
+                    });
+                    // Log error and continue rather than aborting entirely
+                    eprintln!("Failed to pull APK: {}", e);
+                }
             }
         }
 

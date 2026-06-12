@@ -28,23 +28,23 @@ fn check_root(device_id: String) -> bool {
 #[tauri::command]
 async fn start_backup(app: tauri::AppHandle, request: BackupRequest) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let _ = backup::create_backup(request, |progress| {
+        backup::create_backup(request, |progress| {
             let _ = app.emit("backup-progress", progress);
-        });
+        })
     })
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 async fn start_restore(app: tauri::AppHandle, request: BackupRequest) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let _ = backup::restore_backup(request, |progress| {
+        backup::restore_backup(request, |progress| {
             let _ = app.emit("backup-progress", progress); // Reusing event name for simplicity
-        });
+        })
     })
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?
 }
 
 fn main() {
