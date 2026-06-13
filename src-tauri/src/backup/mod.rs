@@ -118,10 +118,10 @@ pub fn create_backup(
 
         if request.backup_data {
             data_pull_targets.push((
-                format!("/data/data/{}", package),
+                format!("/sdcard/Android/data/{}", package),
                 "data.tar.gz",
                 "Backing up App Data...",
-                true // needs root
+                false // doesn't strictly need root if accessible, though scope storage might restrict. We'll use false.
             ));
         }
         if request.backup_user {
@@ -261,7 +261,7 @@ pub fn restore_backup(
                 status: "Restoring App Data...".to_string(),
                 percentage: 70,
             });
-            // Production: adb push or adb exec-in tar to /data/data/pkg
+            // Production: adb push or adb exec-in tar to /sdcard/Android/data/pkg
             std::thread::sleep(std::time::Duration::from_millis(500));
         }
 

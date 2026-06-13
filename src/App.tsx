@@ -45,7 +45,6 @@ function App() {
 
   useEffect(() => {
     if (hasRoot) {
-      setBackupData(true);
       setBackupUser(true);
       setBackupUserDe(true);
     }
@@ -252,7 +251,7 @@ function App() {
               <div className="flex items-center gap-4 text-sm flex-wrap">
                 <span className="font-semibold mr-2">Include:</span>
                 <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={backupApk} onChange={e => setBackupApk(e.target.checked)} className="rounded" /> APK</label>
-                <label className="flex items-center gap-1 cursor-pointer" title="Requires Root"><input type="checkbox" checked={backupData} onChange={e => setBackupData(e.target.checked)} disabled={!hasRoot} className="rounded" /> App Data</label>
+                <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={backupData} onChange={e => setBackupData(e.target.checked)} className="rounded" /> Ext. Data</label>
                 <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={backupObb} onChange={e => setBackupObb(e.target.checked)} className="rounded" /> OBB</label>
                 <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={backupMedia} onChange={e => setBackupMedia(e.target.checked)} className="rounded" /> Media</label>
                 <label className="flex items-center gap-1 cursor-pointer" title="Requires Root"><input type="checkbox" checked={backupUser} onChange={e => setBackupUser(e.target.checked)} disabled={!hasRoot} className="rounded" /> User Data</label>
