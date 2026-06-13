@@ -1,4 +1,4 @@
-use crate::adb::{execute_adb, execute_adb_to_file, execute_adb_from_file, check_dir_exists};
+use crate::adb::{execute_adb, execute_adb_to_file,  check_dir_exists};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -361,30 +361,42 @@ pub fn restore_backup(
                         continue;
                     }
 
-                    // Extract tar from the temporary location
-                    let tar_cmd = format!("tar -xzf {} -C {} && rm {}", tmp_tarball, data_record.device_path, tmp_tarball);
+                    // Extract tar from the temporary location and fix permissions
                     if data_record.requires_root {
+                        let shell_cmd = format!(
+                            "U=$(stat -c %U {}); G=$(stat -c %G {}); tar -xzf {} -C {}; RES=$?; if [ \"$U\" != \"root\" ]; then chown -R $U:$G {}; fi; restorecon -R {}; rm -f {}; exit $RES",
+                            data_record.device_path, data_record.device_path,
+                            tmp_tarball, data_record.device_path,
+                            data_record.device_path, data_record.device_path,
+                            tmp_tarball
+                        );
+
                         match execute_adb(&[
                             "-s",
                             &request.device_id,
                             "shell",
                             "su",
                             "-c",
-                            &tar_cmd
+                            &shell_cmd
                         ]) {
                             Ok(output) => {
-                                log_msg(&output_path, &format!("[{}] Successfully restored {}. Output: {}", package, data_record.local_filename, output));
+                                log_msg(&output_path, &format!("[{}] Successfully restored {} (permissions fixed). Output: {}", package, data_record.local_filename, output));
                             },
                             Err(e) => {
                                 log_msg(&output_path, &format!("[{}] Failed to extract {}: {}", package, data_record.local_filename, e));
                             }
                         }
                     } else {
+                        let shell_cmd = format!(
+                            "tar -xzf {} -C {}; RES=$?; rm -f {}; exit $RES",
+                            tmp_tarball, data_record.device_path, tmp_tarball
+                        );
+
                          match execute_adb(&[
                             "-s",
                             &request.device_id,
                             "shell",
-                            &tar_cmd
+                            &shell_cmd
                         ]) {
                             Ok(output) => {
                                 log_msg(&output_path, &format!("[{}] Successfully restored {}. Output: {}", package, data_record.local_filename, output));
