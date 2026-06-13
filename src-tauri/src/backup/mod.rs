@@ -343,27 +343,55 @@ pub fn restore_backup(
                         let _ = execute_adb(&["-s", &request.device_id, "shell", &mkdir_cmd]);
                     }
 
-                    // Extract tar via exec-in
-                    let tar_cmd = format!("tar -xzf - -C {}", data_record.device_path);
+                    // Check file size for debugging
+                    if let Ok(metadata) = fs::metadata(&local_file) {
+                        log_msg(&output_path, &format!("[{}] Local file size: {} bytes", package, metadata.len()));
+                    }
+
+                    // Push the tarball to a temporary location on the device
+                    let tmp_tarball = format!("/data/local/tmp/{}", data_record.local_filename);
+                    if let Err(e) = execute_adb(&[
+                        "-s",
+                        &request.device_id,
+                        "push",
+                        local_file.to_str().unwrap(),
+                        &tmp_tarball,
+                    ]) {
+                        log_msg(&output_path, &format!("[{}] Failed to push {}: {}", package, data_record.local_filename, e));
+                        continue;
+                    }
+
+                    // Extract tar from the temporary location
+                    let tar_cmd = format!("tar -xzf {} -C {} && rm {}", tmp_tarball, data_record.device_path, tmp_tarball);
                     if data_record.requires_root {
-                        if let Err(e) = execute_adb_from_file(&[
+                        match execute_adb(&[
                             "-s",
                             &request.device_id,
-                            "exec-in",
+                            "shell",
                             "su",
                             "-c",
                             &tar_cmd
-                        ], &local_file) {
-                            log_msg(&output_path, &format!("[{}] Failed to restore {}: {}", package, data_record.local_filename, e));
+                        ]) {
+                            Ok(output) => {
+                                log_msg(&output_path, &format!("[{}] Successfully restored {}. Output: {}", package, data_record.local_filename, output));
+                            },
+                            Err(e) => {
+                                log_msg(&output_path, &format!("[{}] Failed to extract {}: {}", package, data_record.local_filename, e));
+                            }
                         }
                     } else {
-                         if let Err(e) = execute_adb_from_file(&[
+                         match execute_adb(&[
                             "-s",
                             &request.device_id,
-                            "exec-in",
+                            "shell",
                             &tar_cmd
-                        ], &local_file) {
-                            log_msg(&output_path, &format!("[{}] Failed to restore {}: {}", package, data_record.local_filename, e));
+                        ]) {
+                            Ok(output) => {
+                                log_msg(&output_path, &format!("[{}] Successfully restored {}. Output: {}", package, data_record.local_filename, output));
+                            },
+                            Err(e) => {
+                                log_msg(&output_path, &format!("[{}] Failed to extract {}: {}", package, data_record.local_filename, e));
+                            }
                         }
                     }
                 }
