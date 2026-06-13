@@ -45,6 +45,23 @@ pub fn execute_adb_to_file(args: &[&str], output_path: &Path) -> Result<(), Stri
     }
 }
 
+pub fn execute_adb_from_file(args: &[&str], input_path: &Path) -> Result<(), String> {
+    let file = File::open(input_path).map_err(|e| format!("Failed to open input file: {}", e))?;
+    let status = Command::new(get_adb_path())
+        .args(args)
+        .stdin(Stdio::from(file))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .status()
+        .map_err(|e| format!("Failed to execute ADB: {}", e))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err("ADB command failed".to_string())
+    }
+}
+
 pub fn check_dir_exists(device_id: &str, path: &str, needs_root: bool) -> bool {
     let cmd = format!("test -d \"{}\" && echo exists", path);
     let output = if needs_root {

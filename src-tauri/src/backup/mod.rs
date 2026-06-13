@@ -1,8 +1,28 @@
-use crate::adb::{execute_adb, execute_adb_to_file, check_dir_exists};
+use crate::adb::{execute_adb, execute_adb_to_file, execute_adb_from_file, check_dir_exists};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApkRecord {
+    pub local_filename: String,
+    pub device_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DataRecord {
+    pub local_filename: String,
+    pub device_path: String,
+    pub requires_root: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BackupManifest {
+    pub package_name: String,
+    pub apks: Vec<ApkRecord>,
+    pub data_archives: Vec<DataRecord>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BackupProgress {
@@ -58,6 +78,12 @@ pub fn create_backup(
                 .map_err(|e| format!("Failed to create app directory: {}", e))?;
         }
 
+        let mut manifest = BackupManifest {
+            package_name: package.clone(),
+            apks: Vec::new(),
+            data_archives: Vec::new(),
+        };
+
         if request.backup_apk {
             progress_callback(BackupProgress {
                 package_name: package.clone(),
@@ -109,6 +135,10 @@ pub fn create_backup(
                     log_msg(&output_path, &format!("[{}] {}", package, err_msg));
                     eprintln!("{}", err_msg);
                 } else {
+                    manifest.apks.push(ApkRecord {
+                        local_filename: file_name,
+                        device_path: path.clone(),
+                    });
                     log_msg(&output_path, &format!("[{}] Successfully pulled APK to {}", package, dest_path.display()));
                 }
             }
@@ -189,6 +219,11 @@ pub fn create_backup(
                 ], &dest_file) {
                     log_msg(&output_path, &format!("[{}] Failed to backup {}: {}", package, source_path, e));
                 } else {
+                    manifest.data_archives.push(DataRecord {
+                        local_filename: dest_filename.to_string(),
+                        device_path: source_path.clone(),
+                        requires_root: true,
+                    });
                     log_msg(&output_path, &format!("[{}] Successfully backed up {}", package, source_path));
                 }
             } else {
@@ -201,9 +236,19 @@ pub fn create_backup(
                 ], &dest_file) {
                     log_msg(&output_path, &format!("[{}] Failed to backup {}: {}", package, source_path, e));
                 } else {
+                    manifest.data_archives.push(DataRecord {
+                        local_filename: dest_filename.to_string(),
+                        device_path: source_path.clone(),
+                        requires_root: false,
+                    });
                     log_msg(&output_path, &format!("[{}] Successfully backed up {}", package, source_path));
                 }
             }
+        }
+
+        let manifest_path = app_dir.join("backup_manifest.json");
+        if let Ok(manifest_json) = serde_json::to_string_pretty(&manifest) {
+            let _ = fs::write(manifest_path, manifest_json);
         }
 
         progress_callback(BackupProgress {
@@ -231,38 +276,100 @@ pub fn restore_backup(
 
         let app_dir = output_path.join(package);
         if !app_dir.exists() {
+            log_msg(&output_path, &format!("[{}] Restore skipped: Backup directory does not exist", package));
             continue;
         }
 
-        if request.backup_apk {
-            progress_callback(BackupProgress {
-                package_name: package.clone(),
-                status: "Installing APK(s)...".to_string(),
-                percentage: 30,
-            });
+        let manifest_path = app_dir.join("backup_manifest.json");
+        let manifest: Option<BackupManifest> = if manifest_path.exists() {
+            if let Ok(content) = fs::read_to_string(&manifest_path) {
+                serde_json::from_str(&content).ok()
+            } else { None }
+        } else { None };
 
-            // Production implementation would use pm install-create / pm install-write for splits
-            // For V1 we just look for base.apk
-            let base_apk = app_dir.join("base.apk");
-            if base_apk.exists() {
-                 let _ = execute_adb(&[
-                    "-s",
-                    &request.device_id,
-                    "install",
-                    "-r",
-                    base_apk.to_str().unwrap(),
-                ]);
+        if let Some(man) = manifest {
+            if request.backup_apk {
+                progress_callback(BackupProgress {
+                    package_name: package.clone(),
+                    status: "Installing APK(s)...".to_string(),
+                    percentage: 30,
+                });
+
+                // For V1 we still just look for base.apk if it exists, or the first APK in manifest
+                // Proper split APK installation requires `pm install-create` session.
+                let base_apk = app_dir.join("base.apk");
+                let apk_to_install = if base_apk.exists() {
+                    Some(base_apk)
+                } else if !man.apks.is_empty() {
+                    Some(app_dir.join(&man.apks[0].local_filename))
+                } else {
+                    None
+                };
+
+                if let Some(apk_path) = apk_to_install {
+                    log_msg(&output_path, &format!("[{}] Installing APK: {}", package, apk_path.display()));
+                    let _ = execute_adb(&[
+                        "-s",
+                        &request.device_id,
+                        "install",
+                        "-r",
+                        apk_path.to_str().unwrap(),
+                    ]);
+                }
             }
-        }
 
-        if request.backup_data {
-            progress_callback(BackupProgress {
-                package_name: package.clone(),
-                status: "Restoring App Data...".to_string(),
-                percentage: 70,
-            });
-            // Production: adb push or adb exec-in tar to /sdcard/Android/data/pkg
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            if request.backup_data {
+                progress_callback(BackupProgress {
+                    package_name: package.clone(),
+                    status: "Restoring Data...".to_string(),
+                    percentage: 70,
+                });
+
+
+                for data_record in man.data_archives.iter() {
+                    let local_file = app_dir.join(&data_record.local_filename);
+                    if !local_file.exists() {
+                        log_msg(&output_path, &format!("[{}] Missing local archive for restore: {}", package, local_file.display()));
+                        continue;
+                    }
+
+                    log_msg(&output_path, &format!("[{}] Restoring archive {} to {}", package, data_record.local_filename, data_record.device_path));
+
+                    // Create directory first
+                    let mkdir_cmd = format!("mkdir -p {}", data_record.device_path);
+                    if data_record.requires_root {
+                        let _ = execute_adb(&["-s", &request.device_id, "shell", "su", "-c", &mkdir_cmd]);
+                    } else {
+                        let _ = execute_adb(&["-s", &request.device_id, "shell", &mkdir_cmd]);
+                    }
+
+                    // Extract tar via exec-in
+                    let tar_cmd = format!("tar -xzf - -C {}", data_record.device_path);
+                    if data_record.requires_root {
+                        if let Err(e) = execute_adb_from_file(&[
+                            "-s",
+                            &request.device_id,
+                            "exec-in",
+                            "su",
+                            "-c",
+                            &tar_cmd
+                        ], &local_file) {
+                            log_msg(&output_path, &format!("[{}] Failed to restore {}: {}", package, data_record.local_filename, e));
+                        }
+                    } else {
+                         if let Err(e) = execute_adb_from_file(&[
+                            "-s",
+                            &request.device_id,
+                            "exec-in",
+                            &tar_cmd
+                        ], &local_file) {
+                            log_msg(&output_path, &format!("[{}] Failed to restore {}: {}", package, data_record.local_filename, e));
+                        }
+                    }
+                }
+            }
+        } else {
+            log_msg(&output_path, &format!("[{}] Restore skipped: No backup_manifest.json found", package));
         }
 
         progress_callback(BackupProgress {
