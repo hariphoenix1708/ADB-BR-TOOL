@@ -363,13 +363,15 @@ pub fn restore_backup(
 
                     // Extract tar from the temporary location and fix permissions
                     if data_record.requires_root {
-                        let shell_cmd = format!(
+                        let inner_script = format!(
                             "U=$(stat -c %U {}); G=$(stat -c %G {}); tar -xzf {} -C {}; RES=$?; if [ \"$U\" != \"root\" ]; then chown -R $U:$G {}; fi; restorecon -R {}; rm -f {}; exit $RES",
                             data_record.device_path, data_record.device_path,
                             tmp_tarball, data_record.device_path,
                             data_record.device_path, data_record.device_path,
                             tmp_tarball
                         );
+                        // su -c needs double quotes so the Android shell passes it as one argument to su
+                        let shell_cmd = format!("\"{}\"", inner_script);
 
                         match execute_adb(&[
                             "-s",
