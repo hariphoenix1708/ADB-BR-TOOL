@@ -363,13 +363,14 @@ pub fn restore_backup(
 
                     // Extract tar from the temporary location and fix permissions
                     if data_record.requires_root {
-                        let shell_cmd = format!(
+                        let inner_script = format!(
                             "U=$(stat -c %U {}); G=$(stat -c %G {}); tar -xzf {} -C {}; RES=$?; if [ \"$U\" != \"root\" ]; then chown -R $U:$G {}; fi; restorecon -R {}; rm -f {}; exit $RES",
                             data_record.device_path, data_record.device_path,
                             tmp_tarball, data_record.device_path,
                             data_record.device_path, data_record.device_path,
                             tmp_tarball
                         );
+                        let quoted_script = format!("'{}'", inner_script);
 
                         match execute_adb(&[
                             "-s",
@@ -377,7 +378,7 @@ pub fn restore_backup(
                             "shell",
                             "su",
                             "-c",
-                            &shell_cmd
+                            &quoted_script
                         ]) {
                             Ok(output) => {
                                 log_msg(&output_path, &format!("[{}] Successfully restored {} (permissions fixed). Output: {}", package, data_record.local_filename, output));
@@ -387,16 +388,17 @@ pub fn restore_backup(
                             }
                         }
                     } else {
-                        let shell_cmd = format!(
+                        let inner_script = format!(
                             "tar -xzf {} -C {}; RES=$?; rm -f {}; exit $RES",
                             tmp_tarball, data_record.device_path, tmp_tarball
                         );
+                        let quoted_script = format!("'{}'", inner_script);
 
                          match execute_adb(&[
                             "-s",
                             &request.device_id,
                             "shell",
-                            &shell_cmd
+                            &quoted_script
                         ]) {
                             Ok(output) => {
                                 log_msg(&output_path, &format!("[{}] Successfully restored {}. Output: {}", package, data_record.local_filename, output));
